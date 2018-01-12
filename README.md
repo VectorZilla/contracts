@@ -12,14 +12,7 @@ Some key features of VectorZilla projects are:
 - API (REST, GraphQL) enables third-party developers and companies build variety of integrations, and benefit from VZ content and services.
 - Deep Learning (AI) powers many areas of platform and marketplace, such as search, sales, recommendations, design tools, etc.
 
-## Table of Contents
-
-- [Token](#token)
-- [Presale](#presale)
-- [Token Sale](#crowdsale)
-- [Bonus Tiers](#bonus-tiers)
-
-## Token
+## Token & Presale
 VectorZilla Token (VZT) is a ERC20 token that can be traded on crypto-currency exchanges; this token will be used in all transactions within VectorZilla platform and marketplace. Each activity on the platform has an associated cost specified in VZT (“or VZT”). 
 
 VZT is transferred from one participant to another as activities are carried out on the VectorZilla Platform and Marketplace. VectorZilla will be rewarded a fee subsequent to executing these activities.
@@ -33,12 +26,5 @@ Our VZT Tokens serve several key functions in our ecosystem:
 - Platform access
 - API license
 
-## Presale
-TBD
-
-## Token Sale
-TBD
-
-## Bonus Tiers
-TBD
+Please visit https://vectorzilla.io to learn about token, presale and more.
 
