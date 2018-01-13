@@ -5,12 +5,13 @@ import "./ownership/Ownable.sol";
 
 
 contract VZToken is StandardToken, Ownable {
+    
 
     /* metadata */
-    string public constant NAME = "VectorZilla Token";
-    string public constant SYMBOL = "VZT";
-    string public constant VERSION = "0.5";
-    uint8 public constant DECIMALS = 18;
+    string public constant name = "VectorZilla Token";
+    string public constant symbol = "VZT";
+    string public constant version = "0.5";
+    uint8  public constant decimals = 18;
 
     /* all accounts in wei */
     uint256 public constant INITIAL_SUPPLY = 100000000 * 10**18;
@@ -25,11 +26,13 @@ contract VZToken is StandardToken, Ownable {
     uint256 public gas4Token = 80000*0.6*10**9;
     // minimum wei required in an account to perform an action (avg gas price 4Gwei * avg gas limit 80000).
     uint256 public minGas4Accts = 80000*4*10**9;
-    
-    // list of addresses that has transfer restriction.
+
+    // list of addresses that have transfer restriction.
     mapping (address => bool) public accreditedList;
-    uint256 public NumOfAccredited = 0;
-    uint256 public accreditedDate = 1703543589;                       // Assume many years
+    mapping(address => uint256) public accreditedDates;
+    uint256 public numOfAccredited = 0;
+    uint256 public defaultAccreditedDate = 1703543589;                       // Assume many years
+
 
     event Withdraw(address indexed from, address indexed to, uint256 value);
     event GasRebateFailed(address indexed to, uint256 value);
@@ -65,13 +68,6 @@ contract VZToken is StandardToken, Ownable {
         }
         return true;
     }
-    
-    /*
-        Allow changes to accredited date.
-    */
-    function setAccreditedDate(uint256 newAccreditedDate) public onlyOwner {
-        accreditedDate = newAccreditedDate;
-    }
 
     /*
         add the ether address to accredited list to put in transfer restrction.
@@ -79,9 +75,9 @@ contract VZToken is StandardToken, Ownable {
     function addToAccreditedList(address _addr) external onlyOwner {
         require(_addr != address(0));
         require(!accreditedList[_addr]);
-
         accreditedList[_addr] = true;
-        NumOfAccredited += 1;
+        accreditedDates[_addr] = defaultAccreditedDate;
+        numOfAccredited += 1;
     }
 
     /*
@@ -91,12 +87,38 @@ contract VZToken is StandardToken, Ownable {
         require(accreditedList[_addr]);
 
         delete accreditedList[_addr];
-        NumOfAccredited -= 1;
+        delete accreditedDates[_addr];
+        numOfAccredited -= 1;
     }
-    
-    // return true if buyer is an accredited 
-    function isAccreditedlisted(address buyer) public view returns (bool) {
-        return accreditedList[buyer];
+
+    /*
+        return true if _addr is an accredited
+    */
+    function isAccreditedlisted(address _addr) public view returns (bool) {
+        return accreditedList[_addr];
+    }
+
+    /*
+        return accredited date date of _addr is an accredited
+    */
+    function getAccreditedDateFor(address buyer) public view returns (uint256) {
+        return accreditedDates[buyer];
+    }
+
+     /*
+        Allow changes to accredited date.
+    */
+    function setAccreditedDateFor(address _addr, uint256 newAccreditedDate) public onlyOwner {
+        require(_addr != address(0));
+        require(accreditedList[_addr]);
+        accreditedDates[_addr] = newAccreditedDate;
+    }
+
+    /*
+        Set default accredited date.
+    */
+    function setAccreditedDate(uint256 newAccreditedDate) public onlyOwner {
+        defaultAccreditedDate = newAccreditedDate;
     }
 
     /* When necessary, adjust minimum VZT to transfer to make the gas worthwhile */
@@ -134,7 +156,7 @@ contract VZToken is StandardToken, Ownable {
     */
     function canTransferTokens() internal view returns (bool) {
         if (accreditedList[msg.sender]) {
-            return now >= accreditedDate;
+            return now >= accreditedDates[msg.sender];
         } else {
             return true;
         }

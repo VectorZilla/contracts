@@ -9,8 +9,8 @@ import "./VZTPresale.sol";
 contract VZTPresaleDist is Ownable, HasNoTokens {
     using SafeMath for uint256;
 
-    string public constant NAME = "VectorZilla token distribution";
-    string public constant VERSION = "0.5";
+    string public name = "VectorZilla token distribution";
+    string public version = "0.3";
 
     VZToken             token;
     VZTPresale          preSale;
