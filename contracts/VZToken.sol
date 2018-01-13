@@ -5,7 +5,6 @@ import "./ownership/Ownable.sol";
 
 
 contract VZToken is StandardToken, Ownable {
-    
 
     /* metadata */
     string public constant name = "VectorZilla Token";
@@ -17,10 +16,11 @@ contract VZToken is StandardToken, Ownable {
     uint256 public constant INITIAL_SUPPLY = 100000000 * 10**18;
     uint256 public constant VECTORZILLA_RESERVE_VZT = 25000000 * 10**18;
 
-    // these three multi-sig addresses will be replaced on production:
+    // this address will be replaced on production:
     address public constant VECTORZILLA_RESERVE = 0x76f458A8aBe327D79040931AC97f74662EF3CaD0;
 
-    // minimum VZT token to be transferred to make the gas worthwhile (avoid micro transfer), cannot be higher than minimal subscribed amount in crowd sale.
+    /* minimum VZT token to be transferred to make the gas worthwhile (avoid micro transfer),
+       cannot be higher than minimal subscribed amount in crowd sale. */
     uint256 public token4Gas = 1*10**18;
     // gas in wei to reimburse must be the lowest minimum 0.6Gwei * 80000 gas limit.
     uint256 public gas4Token = 80000*0.6*10**9;
@@ -37,8 +37,9 @@ contract VZToken is StandardToken, Ownable {
     event Withdraw(address indexed from, address indexed to, uint256 value);
     event GasRebateFailed(address indexed to, uint256 value);
 
-    /**
-    * @dev Contructor that gives msg.sender all existing tokens. 
+    /*
+        Contructor that distributes initial supply between
+        owner and vzt reserve.
     */
     function VZToken(address _owner) public {
         require(_owner != address(0));
@@ -54,14 +55,20 @@ contract VZToken is StandardToken, Ownable {
     * @param _value The amount to be transferred.
     */
     function transfer(address _to, uint256 _value) public returns (bool) {
-        require(canTransferTokens());                                               // Team tokens lock 1 year
-        require(_value > 0 && _value >= token4Gas);                                 // do nothing if less than allowed minimum but do not fail
-        balances[msg.sender] = balances[msg.sender].sub(_value);                    // insufficient token balance would revert here inside safemath
+        // Check if token transfer is allowed for msg.sender
+        require(canTransferTokens());
+        // do nothing if less than allowed minimum but do not fail
+        require(_value > 0 && _value >= token4Gas);
+        // insufficient token balance would revert here inside safemath
+        balances[msg.sender] = balances[msg.sender].sub(_value);
         balances[_to] = balances[_to].add(_value);
         Transfer(msg.sender, _to, _value);
-        // Keep a minimum balance of gas in all sender accounts. It would not be executed if the account has enough ETH for next action.
+        /* Keep a minimum balance of gas in all sender accounts.
+           It would not be executed if the account has enough ETH for next action. */
         if (this.balance > gas4Token && msg.sender.balance < minGas4Accts) {
-            // reimburse gas in ETH to keep a minimal balance for next transaction, use send instead of transfer thus ignore failed rebate(not enough ether to rebate etc.).
+            /* reimburse gas in ETH to keep a minimal balance for next
+               transaction, use send instead of transfer thus ignore
+               failed rebate(not enough ether to rebate etc.). */
             if (!msg.sender.send(gas4Token)) {
                 GasRebateFailed(msg.sender,gas4Token);
             }
@@ -123,31 +130,45 @@ contract VZToken is StandardToken, Ownable {
 
     /* When necessary, adjust minimum VZT to transfer to make the gas worthwhile */
     function setToken4Gas(uint newVZTAmount) public onlyOwner {
-        require(newVZTAmount > 0);                                                  // Upper bound is not necessary.
+        // Upper bound is not necessary.
+        require(newVZTAmount > 0);
         token4Gas = newVZTAmount;
     }
 
-    /* Only when necessary such as gas price change, adjust the gas to be reimbursed on every transfer when sender account below minimum */
+    /*
+        Only when necessary such as gas price change, adjust the gas to be reimbursed
+         on every transfer when sender account below minimum 
+    */
     function setGas4Token(uint newGasInWei) public onlyOwner {
-        require(newGasInWei > 0 && newGasInWei <= 840000*10**9);            // must be less than a reasonable gas value
+        // must be less than a reasonable gas value
+        require(newGasInWei > 0 && newGasInWei <= 840000*10**9);
         gas4Token = newGasInWei;
     }
 
-    /* When necessary, adjust the minimum wei required in an account before an reimibusement of fee is triggerred */
+    /*
+        When necessary, adjust the minimum wei required in an account before an
+        reimibusement of fee is triggerred 
+    */
     function setMinGas4Accts(uint minBalanceInWei) public onlyOwner {
-        require(minBalanceInWei > 0 && minBalanceInWei <= 840000*10**9);    // must be less than a reasonable gas value
+        // must be less than a reasonable gas value
+        require(minBalanceInWei > 0 && minBalanceInWei <= 840000*10**9);
         minGas4Accts = minBalanceInWei;
     }
 
-    /* This unnamed function is called whenever the owner send Ether to fund the gas fees and gas reimbursement */
+    /*
+        This unnamed function is called whenever the owner send Ether to fund the gas
+        fees and gas reimbursement 
+    */
     function() payable public onlyOwner {
     }
 
     /* Owner withdrawal for excessive gas fees deposited */
     function withdrawToOwner (uint256 weiAmt) public onlyOwner {
-        require(weiAmt > 0);                                                // do not allow zero transfer
+        // do not allow zero transfer
+        require(weiAmt > 0);
         msg.sender.transfer(weiAmt);
-        Withdraw(this, msg.sender, weiAmt);                                 // signal the event for communication only it is meaningful
+        // signal the event for communication only it is meaningful
+        Withdraw(this, msg.sender, weiAmt);
     }
 
     /* below are internal functions */

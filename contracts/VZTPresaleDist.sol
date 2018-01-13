@@ -15,16 +15,19 @@ contract VZTPresaleDist is Ownable, HasNoTokens {
     VZToken             token;
     VZTPresale          preSale;
 
-    uint256 public purchaserCount = 0;                                              // total number of purchasers purchased VZT
-    uint256 public purchaserDistCount = 0;                                          // total number of purchasers received purchased VZT + bonus
+    // total number of purchasers purchased VZT
+    uint256 public purchaserCount = 0;
+    // total number of purchasers received purchased VZT + bonus
+    uint256 public purchaserDistCount = 0;
     uint256 public tokensSold = 0;
     uint256 public minVztPurchase = 0;
     uint256 public tokenHardCap = 0;
     /** this becomes true when crowdsale has distributed purchased tokens with bonus for each purchaser address */
     mapping (address => bool) public tokenDistributed;
 
-    event TokenDistributed(address indexed purchaser, uint256 tokenAmt);            // event logging for each individual distributed token + bonus
-    
+    // event logging for each individual distributed token + bonus
+    event TokenDistributed(address indexed purchaser, uint256 tokenAmt);
+
 
     /*
         Constructor to initialize everything.
@@ -36,10 +39,13 @@ contract VZTPresaleDist is Ownable, HasNoTokens {
         require(_presale != address(0));
         require(_owner != address(0));
         token = VZToken(_token);
-        owner = _owner;                                                             // default owner
+        // default owner
+        owner = _owner;
         preSale = VZTPresale(_presale);
-        purchaserCount = preSale.purchaserCount();                                // initialize to all purchaser count
-        tokensSold = preSale.tokensSold();                                        // initialize token sold from crowd sale
+        // initialize to all purchaser count
+        purchaserCount = preSale.purchaserCount();
+        // initialize token sold from crowd sale
+        tokensSold = preSale.tokensSold();
         minVztPurchase = preSale.MIN_VZT_PURCHASE();
         tokenHardCap = preSale.PRESALE_TOKEN_HARD_CAP();
     }
@@ -57,9 +63,11 @@ contract VZTPresaleDist is Ownable, HasNoTokens {
         require(preSale.isFinalized());
         require(preSale.isMinimumGoalReached());
         require(!tokenDistributed[purchaser]);
-        tokenDistributed[purchaser] = true;                           // token + bonus distributed
+        // token + bonus distributed
+        tokenDistributed[purchaser] = true;
         uint256 tokenPurchased = preSale.tokenAmountOf(purchaser);
-        purchaserDistCount++;                                         // one more purchaser received token + bonus
+         // one more purchaser received token + bonus
+        purchaserDistCount++;
         // transfer the purchased tokens + bonus
         token.transfer(purchaser, tokenPurchased);
         // signal the event for communication

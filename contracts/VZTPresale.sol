@@ -20,25 +20,25 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
     address public constant VZT_WALLET = 0x4D9B157E1c2ed052560304ce10E81ec67AEAbbdF;
 
     uint256 public startDate = 1515974400;                            // January 15, 2018 5:30 AM UTC
-    uint256 public endDate = 1517788800;                                            // Febuary 5, 2018 5:30 AM UTC
-    uint256 public weiRaised = 0;                                                   // total amount of Ether raised in wei
-    uint256 public purchaserCount = 0;                                              // total number of purchasers purchased VZT
-    uint256 public tokensSold = 0;                                                  // total number of VZT tokens sold
-    uint256 public numWhitelisted = 0;                                              // total number whitelisted
+    uint256 public endDate = 1517788800;                              // Febuary 5, 2018 5:30 AM UTC
+    uint256 public weiRaised = 0;                                     // total amount of Ether raised in wei
+    uint256 public purchaserCount = 0;                                // total number of purchasers purchased VZT
+    uint256 public tokensSold = 0;                                    // total number of VZT tokens sold
+    uint256 public numWhitelisted = 0;                                // total number whitelisted
 
     /* if the minimum funding goal in wei is not reached, purchasers may withdraw their funds */
     uint256 public constant MIN_FUNDING_GOAL = 200 * 10 ** 18;
 
-    uint256 public constant PRESALE_TOKEN_SOFT_CAP = 1875000 * 10 ** 18;              // presale ends 48 hours after soft cap of 1,875,000 VZT is reached
-    uint256 public constant PRESALE_RATE = 1250;                                    // presale price is 1 ETH to 1,250 VZT
-    uint256 public constant SOFTCAP_RATE = 1150;                                    // presale price becomes 1 ETH to 1,150 VZT after softcap is reached
-    uint256 public constant PRESALE_TOKEN_HARD_CAP = 5900000 * 10 ** 18;              // presale token hardcap
-    uint256 public constant MIN_PURCHASE = 0.25 * 10 ** 17;                           // minimum purchase is 0.25 ETH to make the gas worthwhile
-    uint256 public constant MIN_VZT_PURCHASE = 1150 * 10 ** 18;                        // minimum token purchase is 1150 or 0.1 ETH
+    uint256 public constant PRESALE_TOKEN_SOFT_CAP = 1875000 * 10 ** 18;    // presale soft cap of 1,875,000 VZT 
+    uint256 public constant PRESALE_RATE = 1250;                            // presale price is 1 ETH to 1,250 VZT
+    uint256 public constant SOFTCAP_RATE = 1150;                            // presale price becomes 1 ETH to 1,150 VZT after softcap is reached
+    uint256 public constant PRESALE_TOKEN_HARD_CAP = 5900000 * 10 ** 18;    // presale token hardcap
+    uint256 public constant MIN_PURCHASE = 0.25 * 10 ** 17;                 // minimum purchase is 0.25 ETH to make the gas worthwhile
+    uint256 public constant MIN_VZT_PURCHASE = 1150 * 10 ** 18;             // minimum token purchase is 1150 or 0.25 ETH
 
 
-    bool public isFinalized = false;                                                // it becomes true when token sale is completed
-    bool public publicSoftCapReached = false;                                       // it becomes true when public softcap is reached
+    bool public isFinalized = false;                                        // it becomes true when token sale is completed
+    bool public publicSoftCapReached = false;                               // it becomes true when public softcap is reached
 
     /** the amount of ETH in wei each address has purchased in this presale */
     mapping(address => uint256) public purchasedAmountOf;
@@ -48,20 +48,14 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
 
     // purchaser wallets
     address[] public purchasers;
-    
-    // refunded to wallets 
+
+    // refunded to wallets
     address[] public refunded_to;
 
     // list of addresses that can purchase
     mapping(address => bool) public whitelist;
 
-    /**
-    * event for token purchase logging
-    * @param purchaser who paid for the tokens
-    * @param beneficiary who got the tokens
-    * @param value weis paid for purchase
-    * @param amount amount of tokens purchased
-    */
+    // event logging for token purchase
     event TokenPurchase(address indexed purchaser, address indexed beneficiary, uint256 value, uint256 amount);
     // event logging for token sale finalized
     event Finalized();
@@ -91,6 +85,7 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
     function() payable public whenNotPaused {
         doPayment(msg.sender, msg.value);
     }
+
      /*
        allows owner to register token purchases done via fiat-eth
     */
@@ -125,7 +120,7 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
     }
 
     /*
-      send refund to purchaser requesting a refund if minimum goal not reached. 
+      send refund to purchaser requesting a refund if minimum goal not reached.
    */
     function sendRefund(address buyer) external onlyOwner {
         doRefund(buyer);
@@ -166,7 +161,7 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
     function isMinimumGoalReached() public view returns (bool) {
         return weiRaised >= MIN_FUNDING_GOAL;
     }
-    
+
     /*
         For the convenience of presale interface to present status info.
     */
@@ -346,33 +341,33 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
         require(isFinalized && !isMinimumGoalReached());
         require(weiRaised - purchasedAmountOf[buyer] >= 0);
         require(tokensSold - tokenAmountOf[buyer] >= 0);
-        
+
         // ETH to refund
         uint256 depositedValue = purchasedAmountOf[buyer];
-        
+
         //Tokens to take back
         uint256 vzt = tokenAmountOf[buyer];
-        
+
         // assume all refunded
         purchasedAmountOf[buyer] = 0;
         // assume all token taken back
         tokenAmountOf[buyer] = 0;
-        
+
         //add token back to owner
         tokenAmountOf[owner] = tokenAmountOf[owner].add(vzt);
-        
+
          if (tokenAmountOf[buyer] == 0) {
             // reduce purchaser count
             purchaserCount--;
             // add to refunded_to list
             refunded_to.push(buyer);
         }
-        
+
         // total ETH reduced
         weiRaised -= depositedValue;
         // total VZT reduced
         tokensSold -= vzt;
-        
+
         // transfer must be called only after purchasedAmountOf is updated to prevent reentrancy attack.
         msg.sender.transfer(depositedValue);
         // refund all ETH
