@@ -3,13 +3,12 @@ pragma solidity ^0.4.18;
 import "./StandardToken.sol";
 import "./ownership/Ownable.sol";
 
-
 contract VZToken is StandardToken, Ownable {
 
     /* metadata */
     string public constant name = "VectorZilla Token";
     string public constant symbol = "VZT";
-    string public constant version = "0.5";
+    string public constant version = "0.9";
     uint8  public constant decimals = 18;
 
     /* all accounts in wei */
@@ -19,23 +18,16 @@ contract VZToken is StandardToken, Ownable {
     // this address will be replaced on production:
     address public constant VECTORZILLA_RESERVE = 0x76f458A8aBe327D79040931AC97f74662EF3CaD0;
 
-    /* minimum VZT token to be transferred to make the gas worthwhile (avoid micro transfer),
-       cannot be higher than minimal subscribed amount in crowd sale. */
-    uint256 public token4Gas = 1*10**18;
-    // gas in wei to reimburse must be the lowest minimum 0.6Gwei * 80000 gas limit.
-    uint256 public gas4Token = 80000*0.6*10**9;
-    // minimum wei required in an account to perform an action (avg gas price 4Gwei * avg gas limit 80000).
-    uint256 public minGas4Accts = 80000*4*10**9;
-
     // list of addresses that have transfer restriction.
     mapping (address => bool) public accreditedList;
     mapping(address => uint256) public accreditedDates;
     uint256 public numOfAccredited = 0;
     uint256 public defaultAccreditedDate = 1703543589;                       // Assume many years
+    // Flag that determines if the token is transferable or not.
+    bool public transfersEnabled = true;
 
-
+    //log event whenever withdrawal from this contract address happens
     event Withdraw(address indexed from, address indexed to, uint256 value);
-    event GasRebateFailed(address indexed to, uint256 value);
 
     /*
         Contructor that distributes initial supply between
@@ -55,27 +47,47 @@ contract VZToken is StandardToken, Ownable {
     * @param _value The amount to be transferred.
     */
     function transfer(address _to, uint256 _value) public returns (bool) {
-        // Check if token transfer is allowed for msg.sender
-        require(canTransferTokens());
         // do nothing if less than allowed minimum but do not fail
-        require(_value > 0 && _value >= token4Gas);
-        // insufficient token balance would revert here inside safemath
-        balances[msg.sender] = balances[msg.sender].sub(_value);
-        balances[_to] = balances[_to].add(_value);
-        Transfer(msg.sender, _to, _value);
-        /* Keep a minimum balance of gas in all sender accounts.
-           It would not be executed if the account has enough ETH for next action. */
-        if (this.balance > gas4Token && msg.sender.balance < minGas4Accts) {
-            /* reimburse gas in ETH to keep a minimal balance for next
-               transaction, use send instead of transfer thus ignore
-               failed rebate(not enough ether to rebate etc.). */
-            if (!msg.sender.send(gas4Token)) {
-                GasRebateFailed(msg.sender,gas4Token);
-            }
+        require(_to != address(0));
+        require(_value > 0); 
+        address _from = msg.sender;
+        if (isContract(_from) && tx.origin == owner) {
+            _from = owner;
         }
+        // Check if token transfer is allowed for msg.sender
+        require(canTransferTokens(_from));
+        _transfer(_from, _to, _value);
         return true;
     }
 
+      /**
+   * @dev Transfer tokens from one address to another
+   * @param _from address The address which you want to send tokens from
+   * @param _to address The address which you want to transfer to
+   * @param _value uint256 the amount of tokens to be transferred
+   */
+  function transferFrom(address _from, address _to, uint256 _value) public returns (bool) {
+        require(canTransferTokens(_from));
+        return super.transferFrom(_from, _to, _value);
+  }
+    /**
+   * @dev Approve the passed address to spend the specified amount of tokens on behalf of msg.sender.
+   *
+   * Beware that changing an allowance with this method brings the risk that someone may use both the old
+   * and the new allowance by unfortunate transaction ordering. One possible solution to mitigate this
+   * race condition is to first reduce the spender's allowance to 0 and set the desired value afterwards:
+   * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+   * @param _spender The address which will spend the funds.
+   * @param _value The amount of tokens to be spent.
+   */
+  function approve(address _spender, uint256 _value) public returns (bool) {
+      return super.approve(_spender, _value);
+  }
+    /// @notice Enables token holders to transfer their tokens freely if true
+    /// @param _transfersEnabled True if transfers are allowed in the clone
+    function enableTransfers(bool _transfersEnabled) external onlyOwner {
+        transfersEnabled = _transfersEnabled;
+    }
     /*
         add the ether address to accredited list to put in transfer restrction.
     */
@@ -90,9 +102,8 @@ contract VZToken is StandardToken, Ownable {
     /*
         remove the ether address from accredited list to remove transfer restriction.
     */
-    function delFrAccreditedList(address _addr) external onlyOwner {
+    function removeFromAccreditedList(address _addr) external onlyOwner {
         require(accreditedList[_addr]);
-
         delete accreditedList[_addr];
         delete accreditedDates[_addr];
         numOfAccredited -= 1;
@@ -108,8 +119,9 @@ contract VZToken is StandardToken, Ownable {
     /*
         return accredited date date of _addr is an accredited
     */
-    function getAccreditedDateFor(address buyer) public view returns (uint256) {
-        return accreditedDates[buyer];
+    function getAccreditedDateFor(address _addr) public view returns (uint256) {
+        require(_addr != address(0));
+        return accreditedDates[_addr];
     }
 
      /*
@@ -118,6 +130,7 @@ contract VZToken is StandardToken, Ownable {
     function setAccreditedDateFor(address _addr, uint256 newAccreditedDate) public onlyOwner {
         require(_addr != address(0));
         require(accreditedList[_addr]);
+        require(newAccreditedDate > now);
         accreditedDates[_addr] = newAccreditedDate;
     }
 
@@ -125,34 +138,8 @@ contract VZToken is StandardToken, Ownable {
         Set default accredited date.
     */
     function setAccreditedDate(uint256 newAccreditedDate) public onlyOwner {
+        require(newAccreditedDate > now);
         defaultAccreditedDate = newAccreditedDate;
-    }
-
-    /* When necessary, adjust minimum VZT to transfer to make the gas worthwhile */
-    function setToken4Gas(uint newVZTAmount) public onlyOwner {
-        // Upper bound is not necessary.
-        require(newVZTAmount > 0);
-        token4Gas = newVZTAmount;
-    }
-
-    /*
-        Only when necessary such as gas price change, adjust the gas to be reimbursed
-         on every transfer when sender account below minimum 
-    */
-    function setGas4Token(uint newGasInWei) public onlyOwner {
-        // must be less than a reasonable gas value
-        require(newGasInWei > 0 && newGasInWei <= 840000*10**9);
-        gas4Token = newGasInWei;
-    }
-
-    /*
-        When necessary, adjust the minimum wei required in an account before an
-        reimibusement of fee is triggerred 
-    */
-    function setMinGas4Accts(uint minBalanceInWei) public onlyOwner {
-        // must be less than a reasonable gas value
-        require(minBalanceInWei > 0 && minBalanceInWei <= 840000*10**9);
-        minGas4Accts = minBalanceInWei;
     }
 
     /*
@@ -175,12 +162,62 @@ contract VZToken is StandardToken, Ownable {
     /*
         VectorZilla and Accredited folks can only transfer tokens after accredited date.
     */
-    function canTransferTokens() internal view returns (bool) {
-        if (accreditedList[msg.sender]) {
-            return now >= accreditedDates[msg.sender];
+    function canTransferTokens(address _addr) internal view returns (bool) {
+        if (accreditedList[_addr]) {
+            return now >= accreditedDates[_addr];
         } else {
-            return true;
+            return transfersEnabled;
         }
     }
 
+    /// @notice This method can be used by the controller to extract mistakenly
+    ///  sent tokens to this contract.
+    /// @param _token The address of the token contract that you want to recover
+    ///  set to 0 in case you want to extract ether.
+    function claimTokens(address _token) external onlyOwner {
+        if (_token == 0x0) {
+            owner.transfer(this.balance);
+            return;
+        }
+        StandardToken token = StandardToken(_token);
+        uint balance = token.balanceOf(this);
+        token.transfer(owner, balance);
+        // signal the event for communication only it is meaningful
+        Withdraw(this, owner, balance);
+    }
+
+     /// @dev Internal function to determine if an address is a contract
+    /// @param _addr The address being queried
+    /// @return True if `_addr` is a contract
+    function isContract(address _addr) constant internal returns (bool) {
+        if (_addr == 0) {
+            return false;
+        }
+        uint256 size;
+        assembly {
+            size := extcodesize(_addr)
+        }
+        return (size > 0);
+    }
+
+        /**
+     * Internal transfer, only can be called by this contract
+     */
+    function _transfer(address _from, address _to, uint _value) internal {
+        // Prevent transfer to 0x0 address. Use burn() instead
+        require(_to != 0x0);
+        // Check if the sender has enough
+        require(balances[_from] >= _value);
+        // Check for overflows
+        require(balances[_to] + _value > balances[_to]);
+        // Save this for an assertion in the future
+        uint256 previousBalances = balances[_from] + balances[_to];
+        // Subtract from the sender
+        balances[_from] -= _value;
+        // Add the same to the recipient
+        balances[_to] += _value;
+        Transfer(_from, _to, _value);
+        // Asserts are used to use static analysis to find bugs in your code. They should never fail
+        assert(balances[_from] + balances[_to] == previousBalances);
+    }
 }

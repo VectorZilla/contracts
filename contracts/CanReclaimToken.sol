@@ -14,13 +14,21 @@ import "./SafeERC20.sol";
 contract CanReclaimToken is Ownable {
   using SafeERC20 for ERC20Basic;
 
+    //log event whenever withdrawal from this contract address happens
+    event Withdraw(address indexed from, address indexed to, uint256 value);
   /**
    * @dev Reclaim all ERC20Basic compatible tokens
    * @param token ERC20Basic The address of the token contract
    */
-  function reclaimToken(ERC20Basic token) external onlyOwner {
-    uint256 balance = token.balanceOf(this);
-    token.safeTransfer(owner, balance);
+  function reclaimToken(address token) external onlyOwner {
+    if (token == 0x0) {
+            owner.transfer(this.balance);
+            return;
+    }
+    ERC20Basic ecr20BasicToken = ERC20Basic(token);
+    uint256 balance = ecr20BasicToken.balanceOf(this);
+    ecr20BasicToken.safeTransfer(owner, balance);
+    Withdraw(msg.sender, owner, balance);
   }
 
 }

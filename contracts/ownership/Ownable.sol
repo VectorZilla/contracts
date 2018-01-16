@@ -38,9 +38,8 @@ contract Ownable {
    */
   function transferOwnership(address newOwner) public {
     require(newOwner != address(0));
-    require(masterOwner == msg.sender); // only master owner can initiate change to ownershipe
+    require(masterOwner == msg.sender); // only master owner can initiate change to ownership
     OwnershipTransferred(owner, newOwner);
     owner = newOwner;
   }
-
 }
