@@ -9,10 +9,11 @@ import "./HasNoTokens.sol";
 
 contract VZTPresale is Ownable, Pausable, HasNoTokens {
 
+
     using SafeMath for uint256;
 
-    string public constant name = "VectorZilla Public Presale";
-    string public constant version = "0.9";
+    string public constant name = "VectorZilla Public Presale";  // solium-disable-line uppercase
+    string public constant version = "1.0"; // solium-disable-line uppercase
 
     VZToken token;
 
@@ -31,16 +32,19 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
     uint256 public endDate = 1517815800;                              // Febuary 5, 2018 7:30 AM UTC
     uint256 public totalCollected = 0;                                // total amount of Ether raised in wei
     uint256 public tokensSold = 0;                                    // total number of VZT tokens sold
+    uint256 public totalDistributed = 0;                              // total number of VZT tokens distributed once finalised
     uint256 public numWhitelisted = 0;                                // total number whitelisted
 
-     struct PurchaseLog {
+    struct PurchaseLog {
         uint256 ethValue;
         uint256 vztValue;
         bool kycApproved;
         bool tokensDistributed;
+        bool paidFiat;
         uint256 lastPurchaseTime;
         uint256 lastDistributionTime;
     }
+
     //purchase log that captures
     mapping (address => PurchaseLog) public purchaseLog;
     //capture refunds
@@ -83,14 +87,16 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
     /*
        default function to buy tokens.
     */
+
     function() payable public whenNotPaused {
         doPayment(msg.sender);
     }
 
-     /*
+    /*
        allows owner to register token purchases done via fiat-eth (or equivalent currency)
     */
     function payableInFiatEth(address buyer, uint256 value) external onlyOwner {
+        purchaseLog[buyer].paidFiat = true;
         // do public presale
         purchasePresale(buyer, value);
     }
@@ -107,7 +113,7 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
     */
     function addToWhitelist(address _addr) public onlyOwner returns (bool) {
         require(_addr != address(0));
-        if(!whitelist[_addr]) {
+        if (!whitelist[_addr]) {
             whitelist[_addr] = true;
             numWhitelisted++;
         }
@@ -159,7 +165,8 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
         require(!refundLog[_user]);
         purchaseLog[_user].tokensDistributed = true;
         purchaseLog[_user].lastDistributionTime = now;
-        token.transfer(_user, purchaseLog[_user].vztValue);
+        totalDistributed++;
+        token.sendToken(_user, purchaseLog[_user].vztValue);
         TokenDistributed(_user, purchaseLog[_user].vztValue);
         return true;
     }
@@ -289,15 +296,15 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
     /**
      * @notice `proxyPayment()` allows the caller to send ether to the VZTPresale
      * and have the tokens created in an address of their choosing
-     * @param _owner The address that will hold the newly created tokens
+     * @param buyer The address that will hold the newly created tokens
      */
-    function proxyPayment(address _owner) 
+    function proxyPayment(address buyer) 
     payable 
     public
     whenNotPaused 
     returns(bool success) 
     {
-        return doPayment(_owner);
+        return doPayment(buyer);
     }
 
     /*
@@ -312,15 +319,15 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
 
     // @dev `doPayment()` is an internal function that sends the ether that this
     //  contract receives to the `vault` and creates tokens in the address of the
-    //  `_owner` assuming the VZTPresale is still accepting funds
-    //  @param _owner The address that will hold the newly created tokens
+    //  `buyer` assuming the VZTPresale is still accepting funds
+    //  @param buyer The address that will hold the newly created tokens
     // @return True if payment is processed successfully
-    function doPayment(address _owner) internal returns(bool success) {
+    function doPayment(address buyer) internal returns(bool success) {
         require(tx.gasprice <= MAX_GAS_PRICE);
         // Antispam
         // do not allow contracts to game the system
-        require(_owner != address(0));
-        require(!isContract(_owner));
+        require(buyer != address(0));
+        require(!isContract(buyer));
         // limit the amount of contributions to once per 100 blocks
         //require(getBlockNumber().sub(lastCallBlock[msg.sender]) >= maxCallFrequency);
         //lastCallBlock[msg.sender] = getBlockNumber();
@@ -333,7 +340,7 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
             require(msg.value >= minimumPurchaseLimit);
         }
         require(msg.value > 0);
-        purchasePresale(_owner, msg.value);
+        purchasePresale(buyer, msg.value);
         return true;
     }
 
@@ -447,7 +454,7 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
         // signal the event for communication
         TokenPurchase(buyer, beneficiary, paidValue, purchasedVzt);
         // transfer must be done at the end after all states are updated to prevent reentrancy attack.
-        if (excessEthInWei > 0) {
+        if (excessEthInWei > 0 && !purchaseLog[buyer].paidFiat) {
             // refund overage ETH
             buyer.transfer(excessEthInWei);
             // signal the event for communication
@@ -489,6 +496,7 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
     function doRefund(address buyer) internal returns (bool) {
         require(tx.gasprice <= MAX_GAS_PRICE);
         require(buyer != address(0));
+        require(!purchaseLog[buyer].paidFiat);
         if (msg.sender != owner) {
             // cannot refund unless authorized
             require(isFinalized && !isMinimumGoalReached());
@@ -524,4 +532,13 @@ contract VZTPresale is Ownable, Pausable, HasNoTokens {
     function getBuyersList() external view returns (address[]) {
         return buyers;
     }
+
+    /**
+        * @dev Transfer all Ether held by the contract to the owner.
+        * Emergency where we might need to recover
+    */
+    function reclaimEther() external onlyOwner {
+        assert(owner.send(this.balance));
+    }
+
 }
