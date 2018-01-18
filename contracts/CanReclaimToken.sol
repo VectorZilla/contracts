@@ -22,8 +22,8 @@ contract CanReclaimToken is Ownable {
    */
   function reclaimToken(address token) external onlyOwner {
     if (token == 0x0) {
-            owner.transfer(this.balance);
-            return;
+      owner.transfer(this.balance);
+      return;
     }
     ERC20Basic ecr20BasicToken = ERC20Basic(token);
     uint256 balance = ecr20BasicToken.balanceOf(this);

@@ -1,12 +1,13 @@
 pragma solidity ^0.4.18;
 
-import './ERC20Basic.sol';
-import './math/SafeMath.sol';
+
+import "./ERC20Basic.sol";
+import "./math/SafeMath.sol";
+
 
 /**
  * @title Basic token
  * @dev Basic version of StandardToken, with no allowances.
- * https://github.com/OpenZeppelin/zeppelin-solidity/
  */
 contract BasicToken is ERC20Basic {
   using SafeMath for uint256;
@@ -37,4 +38,5 @@ contract BasicToken is ERC20Basic {
   function balanceOf(address _owner) public view returns (uint256 balance) {
     return balances[_owner];
   }
+
 }
