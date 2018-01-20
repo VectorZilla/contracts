@@ -1,10 +1,12 @@
-pragma solidity ^0.4 .18;
+pragma solidity ^0.4.18;
 
 import "./StandardToken.sol";
 import "./ownership/Ownable.sol";
-import "./BurnableToken.sol";
 
-contract VZToken is StandardToken, BurnableToken, Ownable {
+/** This interfaces will be implemented by different VZT contracts in future*/
+interface tokenRecipient { function receiveApproval(address _from, uint256 _value, address _token, bytes _extraData) public; }
+
+contract VZToken is StandardToken, Ownable {
 
 
     /* metadata */
@@ -16,36 +18,59 @@ contract VZToken is StandardToken, BurnableToken, Ownable {
 
     /* all accounts in wei */
 
-    uint256 public constant INITIAL_SUPPLY = 100000000 * 10 ** 18;
-    uint256 public constant VECTORZILLA_RESERVE_VZT = 25000000 * 10 ** 18;
+    uint256 public constant INITIAL_SUPPLY = 100000000 * 10 ** 18; //intial total supply
+    uint256 public constant BURNABLE_UP_TO =  90000000 * 10 ** 18; //burnable up to 90% (90 million) of total supply
+    uint256 public constant VECTORZILLA_RESERVE_VZT = 25000000 * 10 ** 18; //25 million - reserved tokens
 
-    // this address will be replaced on production:
-
+    // Reserved tokens will be sent to this address. this address will be replaced on production:
     address public constant VECTORZILLA_RESERVE = 0x76f458A8aBe327D79040931AC97f74662EF3CaD0;
 
-    // list of addresses that have transfer restriction.
-
-    mapping(address => bool) public accreditedList;
-    mapping(address => uint256) public accreditedDates;
-    uint256 public numOfAccredited = 0;
-    uint256 public defaultAccreditedDate = 1703543589; // Assume many years
-
     // - tokenSaleContract receives the whole balance for distribution
-
     address public tokenSaleContract;
-    // Flag that determines if the token is transferable or not.
 
-    bool public transfersEnabled = true;
+    /* Following stuff is to manage regulatory hurdles on who can and cannot use VZT token  */
+    mapping (address => bool) public frozenAccount;
+    event FrozenFunds(address target, bool frozen);
+
+
+    /** Modifiers to be used all over the place **/
 
     modifier onlyOwnerAndContract() {
-        require((msg.sender == owner) || (tx.origin == owner && isContract(msg.sender) && msg.sender == tokenSaleContract));
+        require(msg.sender == owner || msg.sender == tokenSaleContract);
         _;
     }
 
+
+    modifier onlyWhenValidAddress( address _addr ) {
+        require(_addr != address(0x0));
+        _;
+    }
+
+    modifier onlyWhenValidContractAddress(address _addr) {
+        require(_addr != address(0x0));
+        require(_addr != address(this));
+        require(isContract(_addr));
+        _;
+    }
+
+    modifier onlyWhenBurnable(uint256 _value) {
+        require(totalSupply - _value >= INITIAL_SUPPLY - BURNABLE_UP_TO);
+        _;
+    }
+
+    modifier onlyWhenNotFrozen(address _addr) {
+        require(!frozenAccount[_addr]);
+        _;
+    }
+
+    /** End of Modifier Definations */
+
+    /** Events */
+
+    event Burn(address indexed burner, uint256 value);
+    event Finalized();
     //log event whenever withdrawal from this contract address happens
     event Withdraw(address indexed from, address indexed to, uint256 value);
-    event Finalized();
-
 
     /*
         Contructor that distributes initial supply between
@@ -54,8 +79,8 @@ contract VZToken is StandardToken, BurnableToken, Ownable {
     function VZToken(address _owner) public {
         require(_owner != address(0));
         totalSupply = INITIAL_SUPPLY;
-        balances[_owner] = INITIAL_SUPPLY - VECTORZILLA_RESERVE_VZT;
-        balances[VECTORZILLA_RESERVE] = VECTORZILLA_RESERVE_VZT;
+        balances[_owner] = INITIAL_SUPPLY - VECTORZILLA_RESERVE_VZT; //75 millions tokens
+        balances[VECTORZILLA_RESERVE] = VECTORZILLA_RESERVE_VZT; //25 millions
         owner = _owner;
     }
 
@@ -66,57 +91,100 @@ contract VZToken is StandardToken, BurnableToken, Ownable {
     function () payable public onlyOwner {}
 
     /**
-     * @dev transfer token for a specified address
+     * @dev transfer `_value` token for a specified address
      * @param _to The address to transfer to.
      * @param _value The amount to be transferred.
      */
-    function transfer(address _to, uint256 _value) public returns(bool) {
-        require(checkTransferEnabled(msg.sender));
+    function transfer(address _to, uint256 _value) 
+        public
+        onlyWhenValidAddress(_to)
+        onlyWhenNotFrozen(msg.sender)
+        onlyWhenNotFrozen(_to)
+        returns(bool) {
         return super.transfer(_to, _value);
     }
 
     /**
-     * @dev Transfer tokens from one address to another
+     * @dev Transfer `_value` tokens from one address (`_from`) to another (`_to`)
      * @param _from address The address which you want to send tokens from
      * @param _to address The address which you want to transfer to
      * @param _value uint256 the amount of tokens to be transferred
      */
-    function transferFrom(address _from, address _to, uint256 _value) public returns(bool) {
-        require(checkTransferEnabled(_from) && checkTransferEnabled(msg.sender));
+    function transferFrom(address _from, address _to, uint256 _value) 
+        public
+        onlyWhenValidAddress(_to)
+        onlyWhenValidAddress(_from)
+        onlyWhenNotFrozen(_from)
+        onlyWhenNotFrozen(_to)
+        returns(bool) {
         return super.transferFrom(_from, _to, _value);
     }
 
-    /*
-        return true if _addr is an accredited
-    */
-    function isAccreditedlisted(address _addr) public view returns(bool) {
-        return accreditedList[_addr];
+    /**
+     * @dev Burns a specific (`_value`) amount of tokens.
+     * @param _value uint256 The amount of token to be burned.
+     */
+    function burn(uint256 _value)
+        public
+        onlyWhenBurnable(_value)
+        onlyWhenNotFrozen(msg.sender)
+        returns (bool) {
+        require(_value <= balances[msg.sender]);
+      // no need to require value <= totalSupply, since that would imply the
+      // sender's balance is greater than the totalSupply, which *should* be an assertion failure
+        address burner = msg.sender;
+        balances[burner] = balances[burner].sub(_value);
+        totalSupply = totalSupply.sub(_value);
+        Burn(burner, _value);
+        Transfer(burner, address(0x0), _value);
+        return true;
+      }
+
+    /**
+     * Destroy tokens from other account
+     *
+     * Remove `_value` tokens from the system irreversibly on behalf of `_from`.
+     *
+     * @param _from the address of the sender
+     * @param _value the amount of money to burn
+     */
+    function burnFrom(address _from, uint256 _value) 
+        public
+        onlyWhenBurnable(_value)
+        onlyWhenNotFrozen(_from)
+        onlyWhenNotFrozen(msg.sender)
+        returns (bool success) {
+        assert(transferFrom( _from, msg.sender, _value ));
+        return burn(_value);
     }
 
-    /*
-        return accredited date date of _addr is an accredited
-    */
-    function getAccreditedDateFor(address _addr) public view returns(uint256) {
-        require(_addr != address(0));
-        return accreditedDates[_addr];
+    /**
+     * Set allowance for other address and notify
+     *
+     * Allows `_spender` to spend no more than `_value` tokens on your behalf, and then ping the contract about it
+     *
+     * @param _spender The address authorized to spend
+     * @param _value the max amount they can spend
+     * @param _extraData some extra information to send to the approved contract
+     */
+    function approveAndCall(address _spender, uint256 _value, bytes _extraData)
+        public
+        onlyWhenValidAddress(_spender)
+        returns (bool success) {
+        tokenRecipient spender = tokenRecipient(_spender);
+        if (approve(_spender, _value)) {
+            spender.receiveApproval(msg.sender, _value, this, _extraData);
+            return true;
+        }
     }
 
-    /*
-     Allow changes to accredited date.
- */
-    function setAccreditedDateFor(address _addr, uint256 newAccreditedDate) public onlyOwner {
-        require(_addr != address(0));
-        require(accreditedList[_addr]);
-        require(newAccreditedDate > now);
-        accreditedDates[_addr] = newAccreditedDate;
-    }
-
-    /*
-        Set default accredited date.
-    */
-    function setAccreditedDate(uint256 newAccreditedDate) public onlyOwner {
-        require(newAccreditedDate > now);
-        defaultAccreditedDate = newAccreditedDate;
+    /**
+     * Freezes account and disables transfers/burning
+     *  This is to manage regulatory hurdlers where contract owner is required to freeze some accounts.
+     */
+    function freezeAccount(address target, bool freeze) external onlyOwner {
+        frozenAccount[target] = freeze;
+        FrozenFunds(target, freeze);
     }
 
     /* Owner withdrawal of an ether deposited from Token ether balance */
@@ -128,31 +196,6 @@ contract VZToken is StandardToken, BurnableToken, Ownable {
         Withdraw(this, msg.sender, weiAmt);
     }
 
-    /// @notice Enables token holders to transfer their tokens freely if true
-    /// @param _transfersEnabled True if transfers are allowed in the clone
-    function enableTransfers(bool _transfersEnabled) external onlyOwner {
-        transfersEnabled = _transfersEnabled;
-    }
-    /*
-        add the ether address to accredited list to put in transfer restrction.
-    */
-    function addToAccreditedList(address _addr) external onlyOwner {
-        require(_addr != address(0));
-        require(!accreditedList[_addr]);
-        accreditedList[_addr] = true;
-        accreditedDates[_addr] = defaultAccreditedDate;
-        numOfAccredited += 1;
-    }
-
-    /*
-        remove the ether address from accredited list to remove transfer restriction.
-    */
-    function removeFromAccreditedList(address _addr) external onlyOwner {
-        require(accreditedList[_addr]);
-        delete accreditedList[_addr];
-        delete accreditedDates[_addr];
-        numOfAccredited -= 1;
-    }
 
     /// @notice This method can be used by the controller to extract mistakenly
     ///  sent tokens to this contract.
@@ -170,23 +213,16 @@ contract VZToken is StandardToken, BurnableToken, Ownable {
         Withdraw(this, owner, balance);
     }
 
-    function setTokenSaleContract(address _tokenSaleContract) external onlyOwner {
-        require(isContract(_tokenSaleContract) && _tokenSaleContract != address(0));
-        tokenSaleContract = _tokenSaleContract;
-    }
-    /*
-        VectorZilla and Accredited folks can only transfer tokens after accredited date.
-    */
-    function checkTransferEnabled(address _addr) internal view returns(bool) {
-        if (accreditedList[_addr]) {
-            return now >= accreditedDates[_addr];
-        } else {
-            return transfersEnabled;
-        }
+    function setTokenSaleContract(address _tokenSaleContract)
+        external
+        onlyWhenValidContractAddress(_tokenSaleContract)
+        onlyOwner {
+           require(_tokenSaleContract != tokenSaleContract);
+           tokenSaleContract = _tokenSaleContract;
     }
 
     /// @dev Internal function to determine if an address is a contract
-    /// @param _addr The address being queried
+    /// @param _addr address The address being queried
     /// @return True if `_addr` is a contract
     function isContract(address _addr) constant internal returns(bool) {
         if (_addr == 0) {
@@ -200,14 +236,16 @@ contract VZToken is StandardToken, BurnableToken, Ownable {
     }
 
     /**
-     * @dev Function to send tokens to users from controller contract or owner
-     * @param _to The address that will receive the minted tokens.
-     * @param _value The amount of tokens to mint.
-     * @return A boolean that indicates if the operation was successful.
+     * @dev Function to send `_value` tokens to user (`_to`) from sale contract/owner
+     * @param _to address The address that will receive the minted tokens.
+     * @param _value uint256 The amount of tokens to be sent.
+     * @return True if the operation was successful.
      */
-    function sendToken(address _to, uint256 _value) public onlyOwnerAndContract returns(bool) {
-        // Prevent transfer to 0x0 address. Use burn() instead
-        require(_to != 0x0);
+    function sendToken(address _to, uint256 _value)
+        public
+        onlyWhenValidAddress(_to)
+        onlyOwnerAndContract
+        returns(bool) {
         address _from = owner;
         // Check if the sender has enough
         require(balances[_from] >= _value);
@@ -224,13 +262,22 @@ contract VZToken is StandardToken, BurnableToken, Ownable {
         assert(balances[_from] + balances[_to] == previousBalances);
         return true;
     }
-
-    // Finalize method marks the point where token transfers are finally allowed for everybody
-    function finalize() external onlyOwnerAndContract returns(bool success) {
-        require(!transfersEnabled);
-        require(msg.sender == tokenSaleContract || msg.sender == owner);
-        transfersEnabled = true;
-        Finalized();
+    /**
+     * @dev Batch transfer of tokens to addresses from owner's balance
+     * @param addresses address[] The address that will receive the minted tokens.
+     * @param _values uint256[] The amount of tokens to be sent.
+     * @return True if the operation was successful.
+     */
+    function batchSendTokens(address[] addresses, uint256[] _values) 
+        public onlyOwnerAndContract
+        returns (bool) {
+        require(addresses.length == _values.length);
+        require(addresses.length <= 20); //only batches of 20 allowed
+        uint i = 0;
+        uint len = addresses.length;
+        for (;i < len; i++) {
+            sendToken(addresses[i], _values[i]);
+        }
         return true;
     }
 }
