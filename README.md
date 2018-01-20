@@ -28,6 +28,6 @@ Our VZT Tokens serve several key functions in our ecosystem:
 
 Please visit https://vectorzilla.io to learn about token, presale and more.
 
-## Contracts on Kovan Testnet
-- VZToken: https://kovan.etherscan.io/token/0x0d3244bd5646a92d0d964214636fd308da798f21
-- VZTPresale: https://kovan.etherscan.io/address/0x1b8d805e3534a3d93bcf5b3d8e4b4bbdc83e318c
+## Contracts on  Mainnet 
+- VZToken: https://etherscan.io/token/0xfa814a9837c46c6c2065be983b546f56b19d2232
+- VZTPresale: https://etherscan.io/address/0xfd26d4fedea09da1bb2c4e410c747dda72fdb506
